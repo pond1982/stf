@@ -3,7 +3,8 @@ import type {Control} from '@/core/control'
 
 type Phase = 'down' | 'move' | 'up'
 interface Sample {phase: Phase; at: number; x: number; y: number}
-type Mode = 'idle' | 'recording' | 'playing'
+type Mode = 'idle' | 'recording' | 'playing' | 'looping'
+const LOOP_PAUSE_MS = 500
 
 function load(key: string): Sample[] {
   try {
@@ -106,17 +107,18 @@ export function useTouchRecorder(serial: string, enabled: boolean, control: Cont
     touchReset(seq: number) { pending.current = []; control.touchReset(seq) }
   }), [control, capture])
 
-  function play() {
+  function play(repeat = false) {
     const samples = tape.current
     if (!enabled || current.current !== 'idle' || !samples.length) return
-    current.current = 'playing'
-    setMode('playing')
+    const playbackMode = repeat ? 'looping' : 'playing'
+    current.current = playbackMode
+    setMode(playbackMode)
     let seq = 0
     const next = () => seq++ % 100
     let index = 0
     let down = false
     let timer: ReturnType<typeof setTimeout>
-    const start = performance.now() - samples[0]!.at
+    let start = 0
     cancelPlayback.current = () => {
       clearTimeout(timer)
       if (down) {
@@ -125,7 +127,8 @@ export function useTouchRecorder(serial: string, enabled: boolean, control: Cont
       }
     }
     function send() {
-      if (current.current !== 'playing' || control.readOnly || document.hidden) return stop()
+      if (current.current !== playbackMode || control.readOnly || document.hidden) return stop()
+      if (index === 0) start = performance.now() - samples[0]!.at
       const e = samples[index++]!
       if (e.phase === 'down') {
         control.gestureStart(next(), screenId ?? undefined)
@@ -139,7 +142,12 @@ export function useTouchRecorder(serial: string, enabled: boolean, control: Cont
         control.gestureStop(next())
         down = false
       }
-      if (index === samples.length) return stop()
+      if (index === samples.length) {
+        if (!repeat) return stop()
+        index = 0
+        timer = setTimeout(send, LOOP_PAUSE_MS)
+        return
+      }
       timer = setTimeout(send, Math.max(0, start + samples[index]!.at - performance.now()))
     }
     send()

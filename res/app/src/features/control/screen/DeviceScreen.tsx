@@ -68,7 +68,7 @@ export function DeviceScreen({device, control, showScreen}: DeviceScreenProps) {
   const recorderEnabled = singleTouch && !!touchEnabled && hasFrame && !streamStatus && !displayError
   const recorder = useTouchRecorder(device.serial, recorderEnabled, control, wdaScreen ? null : iosScreenSessionId)
   const touchControl = singleTouch ? recorder.touchControl : control
-  const playing = recorder.mode === 'playing'
+  const playing = recorder.mode === 'playing' || recorder.mode === 'looping'
   const url = device.display?.url
   const displayWidth = device.display?.width || 0
   const displayHeight = device.display?.height || 0
@@ -239,9 +239,10 @@ export function DeviceScreen({device, control, showScreen}: DeviceScreenProps) {
     {singleTouch && !readOnly && <div className="touch-recorder" aria-label="Gesture recorder">
       {recorder.mode === 'idle' ? <>
         <Button size="compact-sm" variant="light" disabled={!recorderEnabled} onClick={recorder.record}>Record</Button>
-        <Button size="compact-sm" variant="light" disabled={!recorderEnabled || !recorder.count} onClick={recorder.play}>Play</Button>
+        <Button size="compact-sm" variant="light" disabled={!recorderEnabled || !recorder.count} onClick={() => recorder.play()}>Play</Button>
+        <Button size="compact-sm" variant="light" disabled={!recorderEnabled || !recorder.count} onClick={() => recorder.play(true)}>Loop</Button>
       </> : <Button size="compact-sm" color="red" onClick={recorder.stop}>Stop</Button>}
-      <span role="status">{recorder.mode === 'playing' ? 'Playing' : recorder.mode === 'recording' ? 'Recording' : ''}
+      <span role="status">{recorder.mode === 'looping' ? 'Looping' : recorder.mode === 'playing' ? 'Playing' : recorder.mode === 'recording' ? 'Recording' : ''}
         {recorder.mode === 'idle' || recorder.count > 0 ? ` ${recorder.count} gesture${recorder.count === 1 ? '' : 's'}` : ''}
       </span>
     </div>}
