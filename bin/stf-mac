@@ -4,6 +4,9 @@ cd "$(dirname "$0")/.."
 export DOCKER_CONTEXT=colima-stf
 
 compose() {
+  if [ -f ios.local.json ] && [ -f tmp/mac-ios/compose.json ]; then
+    set -- -f tmp/mac-ios/compose.json "$@"
+  fi
   docker-compose -f docker-compose.yaml -f docker/compose/macos.yaml "$@"
 }
 
@@ -16,6 +19,21 @@ case "${1:-status}" in
     if [ ! -f .env ]; then
       (umask 077
        printf 'STF_SECRET=%s\n' "$(openssl rand -hex 32)" > .env)
+    fi
+    if [ -f ios.local.json ]; then
+      mkdir -p -m 700 tmp/mac-ios
+      colima ssh-config -p stf > tmp/mac-ios/ssh.config
+      guest_uid=$(colima ssh -p stf -- id -u)
+      socket="/run/user/$guest_uid/stf-ios-usbmuxd"
+      if ! colima ssh -p stf -- test -S "$socket"; then
+        ssh -F tmp/mac-ios/ssh.config -O forward -R "$socket:/var/run/usbmuxd" colima-stf
+      fi
+      # The socket's parent is private; the runtime uses UID 1000 in its container.
+      colima ssh -p stf -- chmod 666 "$socket"
+      node tools/ios-prototype/macos-prepare.mts "$socket"
+      if ! docker image inspect stf-ios-runtime:local >/dev/null 2>&1; then
+        docker build --build-arg TARGETARCH=arm64 -f docker/ios/Dockerfile -t stf-ios-runtime:local .
+      fi
     fi
     compose up -d --wait
     ;;
