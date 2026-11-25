@@ -1,4 +1,17 @@
 services:
+  auth:
+    command: ["node", "/app/local-auth.cjs"]
+    environment:
+      STF_LOCAL_PASSWORD_HASH: ${STF_LOCAL_PASSWORD_HASH:?Configure the local admin password hash}
+    volumes:
+      - ./docker/compose/local-auth.cjs:/app/local-auth.cjs:ro
+
+  app:
+    command: >-
+      stf app
+      --auth-url http://127.0.0.1:7100/auth/local/
+      --websocket-url http://127.0.0.1:7100/
+
   adb:
     profiles: [linux-usb]
 
