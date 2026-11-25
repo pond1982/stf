@@ -165,13 +165,16 @@
   pointer-events: none;
 }
 
-.device-screen.with-recorder { height: calc(100% - 36px); }
+.device-screen-layout, .touch-recorder-layout { height: 100%; }
+.touch-recorder-layout { display: flex; flex-direction: column; }
+.device-screen.with-recorder { flex: 1 1 0; min-height: 0; }
 .touch-recorder {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 36px;
+  min-height: 36px;
+  flex-wrap: wrap;
   color: #e1e5ed;
   font-size: 13px;
 }

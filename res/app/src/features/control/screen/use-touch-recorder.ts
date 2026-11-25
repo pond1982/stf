@@ -6,19 +6,24 @@ interface Sample {phase: Phase; at: number; x: number; y: number}
 type Mode = 'idle' | 'recording' | 'playing' | 'looping'
 const LOOP_PAUSE_MS = 500
 
+function validSamples(value: unknown): value is Sample[] {
+  if (!Array.isArray(value)) return false
+  let down = false
+  let previous = 0
+  for (const e of value) {
+    if (!e || !Number.isSafeInteger(e.at) || e.at < previous ||
+        ![e.x, e.y].every(n => Number.isFinite(n) && n >= 0 && n <= 1) ||
+        !(down ? e.phase === 'up' || e.phase === 'move' : e.phase === 'down')) return false
+    previous = e.at
+    down = e.phase !== 'up'
+  }
+  return !down
+}
+
 function load(key: string): Sample[] {
   try {
-    const data: Sample[] = JSON.parse(sessionStorage.getItem(key) || '[]')
-    let down = false
-    let previous = 0
-    for (const e of data) {
-      if (!Number.isFinite(e.at) || e.at < previous ||
-          ![e.x, e.y].every(n => Number.isFinite(n) && n >= 0 && n <= 1) ||
-          !(down ? e.phase === 'up' || e.phase === 'move' : e.phase === 'down')) return []
-      previous = e.at
-      down = e.phase !== 'up'
-    }
-    return Array.isArray(data) && !down ? data : []
+    const data: unknown = JSON.parse(sessionStorage.getItem(key) || '[]')
+    return validSamples(data) ? data : []
   }
   catch { return [] }
 }
@@ -27,6 +32,7 @@ function load(key: string): Sample[] {
 export function useTouchRecorder(serial: string, enabled: boolean, control: Control, screenId: string | null) {
   const key = 'stf.touch-recording.' + serial
   const tape = useRef<Sample[]>([])
+  const fileRequest = useRef(0)
   const pending = useRef<Sample[]>([])
   const origin = useRef(0)
   const [count, setCount] = useState(0)
@@ -45,7 +51,7 @@ export function useTouchRecorder(serial: string, enabled: boolean, control: Cont
   useLayoutEffect(() => {
     tape.current = load(key)
     setCount(tape.current.filter(e => e.phase === 'up').length)
-    return stop
+    return () => { fileRequest.current++; stop() }
   }, [key, stop])
 
   useLayoutEffect(() => {
@@ -63,8 +69,33 @@ export function useTouchRecorder(serial: string, enabled: boolean, control: Cont
     }
   }, [stop])
 
+  const updateTape = useCallback((samples: Sample[]) => {
+    tape.current = samples
+    setCount(samples.filter(e => e.phase === 'up').length)
+    try { sessionStorage.setItem(key, JSON.stringify(samples)) }
+    catch { /* The recording remains available on the open control page. */ }
+  }, [key])
+
+  function exportFile() {
+    const contents = {format: 'stf-gestures', version: 1, samples: tape.current}
+    return new Blob([JSON.stringify(contents)], {type: 'application/json'})
+  }
+
+  async function importFile(file: Blob) {
+    const request = ++fileRequest.current
+    const contents = JSON.parse(await file.text())
+    if (request !== fileRequest.current || current.current !== 'idle') return
+    if (contents?.format !== 'stf-gestures' || contents.version !== 1 ||
+        !validSamples(contents.samples) || !contents.samples.length) {
+      throw new Error('Choose a valid STF gesture recording saved with Save.')
+    }
+    updateTape(contents.samples.map(({phase, at, x, y}: Sample) => ({phase, at, x, y})))
+    return true
+  }
+
   function record() {
     if (!enabled || current.current !== 'idle') return
+    fileRequest.current++
     current.current = 'recording'
     origin.current = performance.now()
     pending.current = []
@@ -80,15 +111,11 @@ export function useTouchRecorder(serial: string, enabled: boolean, control: Cont
     const at = Math.round(performance.now() - origin.current)
     pending.current.push({phase, x, y, at})
     if (phase === 'up') {
-      if (replaceNext.current) tape.current = []
+      updateTape(replaceNext.current ? pending.current : tape.current.concat(pending.current))
       replaceNext.current = false
-      tape.current = tape.current.concat(pending.current)
       pending.current = []
-      setCount(tape.current.filter(e => e.phase === 'up').length)
-      try { sessionStorage.setItem(key, JSON.stringify(tape.current)) }
-      catch { /* The recording remains available on the open control page. */ }
     }
-  }, [key])
+  }, [updateTape])
 
   const touchControl = useMemo(() => ({
     ...control,
@@ -110,6 +137,7 @@ export function useTouchRecorder(serial: string, enabled: boolean, control: Cont
   function play(repeat = false) {
     const samples = tape.current
     if (!enabled || current.current !== 'idle' || !samples.length) return
+    fileRequest.current++
     const playbackMode = repeat ? 'looping' : 'playing'
     current.current = playbackMode
     setMode(playbackMode)
@@ -152,5 +180,5 @@ export function useTouchRecorder(serial: string, enabled: boolean, control: Cont
     }
     send()
   }
-  return {mode, count, record, play, stop, touchControl}
+  return {mode, count, record, play, stop, touchControl, exportFile, importFile}
 }

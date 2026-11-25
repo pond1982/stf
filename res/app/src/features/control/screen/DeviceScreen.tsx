@@ -1,5 +1,8 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react'
-import {Button, Loader} from '@mantine/core'
+import {Button, FileButton, Loader} from '@mantine/core'
+import {saveAs} from 'file-saver'
+import {notifyFailure} from '@/ui/notify'
+import {notifications} from '@mantine/notifications'
 import {IconEyeOff, IconRefresh} from '@tabler/icons-react'
 import debounce from 'lodash/debounce'
 import type {Control} from '@/core/control'
@@ -43,6 +46,7 @@ export function DeviceScreen({device, control, showScreen}: DeviceScreenProps) {
     , 'hevc-locked': t('The iPhone is still locked. Unlock it on the device.')
     , 'hevc-automation': t('The iPhone screen is unavailable during automation.')
   }
+  const resetFile = useRef<(() => void) | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const positionerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -164,6 +168,20 @@ export function DeviceScreen({device, control, showScreen}: DeviceScreenProps) {
 
   useGuestOrientation(control, control.readOnly)
 
+  function saveRecording() {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    saveAs(recorder.exportFile(), `gestures-${stamp}.stf.json`)
+  }
+
+  async function loadRecording(file: File | null) {
+    if (!file) return
+    resetFile.current?.()
+    try {
+      if (await recorder.importFile(file)) notifications.show({message: 'Recording loaded'})
+    }
+    catch (error) { notifyFailure(error, 'Could not load recording') }
+  }
+
   function retryLoadingScreen() {
     if (displayError === 'secure') {
       control.home()
@@ -174,7 +192,7 @@ export function DeviceScreen({device, control, showScreen}: DeviceScreenProps) {
   }
 
   return (
-    <>
+    <div className={singleTouch && !readOnly ? 'touch-recorder-layout' : 'device-screen-layout'}>
     <div ref={rootRef} className={singleTouch && !readOnly ? 'device-screen with-recorder' : 'device-screen'}>
       <div ref={positionerRef} className='positioner'>
         <canvas ref={canvasRef} className='screen' />
@@ -241,11 +259,15 @@ export function DeviceScreen({device, control, showScreen}: DeviceScreenProps) {
         <Button size="compact-sm" variant="light" disabled={!recorderEnabled} onClick={recorder.record}>Record</Button>
         <Button size="compact-sm" variant="light" disabled={!recorderEnabled || !recorder.count} onClick={() => recorder.play()}>Play</Button>
         <Button size="compact-sm" variant="light" disabled={!recorderEnabled || !recorder.count} onClick={() => recorder.play(true)}>Loop</Button>
+        <Button size="compact-sm" variant="light" disabled={!recorder.count} onClick={saveRecording}>Save</Button>
+        <FileButton resetRef={resetFile} onChange={loadRecording} accept=".json,application/json">
+          {props => <Button {...props} size="compact-sm" variant="light">Load</Button>}
+        </FileButton>
       </> : <Button size="compact-sm" color="red" onClick={recorder.stop}>Stop</Button>}
       <span role="status">{recorder.mode === 'looping' ? 'Looping' : recorder.mode === 'playing' ? 'Playing' : recorder.mode === 'recording' ? 'Recording' : ''}
         {recorder.mode === 'idle' || recorder.count > 0 ? ` ${recorder.count} gesture${recorder.count === 1 ? '' : 's'}` : ''}
       </span>
     </div>}
-    </>
+    </div>
   )
 }
