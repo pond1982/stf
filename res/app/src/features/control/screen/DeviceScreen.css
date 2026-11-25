@@ -164,3 +164,14 @@
 .device-screen .screen-stream-status {
   pointer-events: none;
 }
+
+.device-screen.with-recorder { height: calc(100% - 36px); }
+.touch-recorder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  color: #e1e5ed;
+  font-size: 13px;
+}

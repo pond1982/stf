@@ -14,6 +14,7 @@ import {startScreenStream, type DisplayError, type ScreenGeometry, type ScreenSt
   type ScreenStreamStatus} from './screen-stream'
 import {bindScreenTouch} from './screen-touch'
 import {useGuestOrientation} from './use-guest-orientation'
+import {useTouchRecorder} from './use-touch-recorder'
 import './DeviceScreen.css'
 
 const FINGER_COUNT = 10
@@ -64,6 +65,10 @@ export function DeviceScreen({device, control, showScreen}: DeviceScreenProps) {
   const iosInputReady = wdaScreen ? wdaInputReady : iosScreenSessionId !== null && device.ios?.locked !== true
   const touchEnabled = !readOnly && (!singleTouch ||
     (showScreen && iosInputReady && device.using && canViewDevice(device) && !isAutomated(device)))
+  const recorderEnabled = singleTouch && !!touchEnabled && hasFrame && !streamStatus && !displayError
+  const recorder = useTouchRecorder(device.serial, recorderEnabled, control, wdaScreen ? null : iosScreenSessionId)
+  const touchControl = singleTouch ? recorder.touchControl : control
+  const playing = recorder.mode === 'playing'
   const url = device.display?.url
   const displayWidth = device.display?.width || 0
   const displayHeight = device.display?.height || 0
@@ -137,7 +142,7 @@ export function DeviceScreen({device, control, showScreen}: DeviceScreenProps) {
   useEffect(() => {
     const root = rootRef.current
     const input = inputRef.current
-    if (!touchEnabled || !root || !input) {
+    if (!touchEnabled || playing || !root || !input) {
       return undefined
     }
     return bindScreenTouch({
@@ -146,11 +151,11 @@ export function DeviceScreen({device, control, showScreen}: DeviceScreenProps) {
       , fingers: fingerRefs.current
       , screen: screenRef.current
       , scaler
-      , control
+      , control: touchControl
       , singleTouch
       , screenSessionId: wdaScreen ? null : iosScreenSessionId
     })
-  }, [control, touchEnabled, scaler, singleTouch, iosScreenSessionId, wdaScreen])
+  }, [touchControl, playing, touchEnabled, scaler, singleTouch, iosScreenSessionId, wdaScreen])
 
   useEffect(() => {
     const input = inputRef.current
@@ -169,7 +174,8 @@ export function DeviceScreen({device, control, showScreen}: DeviceScreenProps) {
   }
 
   return (
-    <div ref={rootRef} className='device-screen'>
+    <>
+    <div ref={rootRef} className={singleTouch && !readOnly ? 'device-screen with-recorder' : 'device-screen'}>
       <div ref={positionerRef} className='positioner'>
         <canvas ref={canvasRef} className='screen' />
         <canvas className='hacky-stretcher' width={1} height={1} />
@@ -230,5 +236,15 @@ export function DeviceScreen({device, control, showScreen}: DeviceScreenProps) {
         aria-label={t('Keyboard')}
       />
     </div>
+    {singleTouch && !readOnly && <div className="touch-recorder" aria-label="Gesture recorder">
+      {recorder.mode === 'idle' ? <>
+        <Button size="compact-sm" variant="light" disabled={!recorderEnabled} onClick={recorder.record}>Record</Button>
+        <Button size="compact-sm" variant="light" disabled={!recorderEnabled || !recorder.count} onClick={recorder.play}>Play</Button>
+      </> : <Button size="compact-sm" color="red" onClick={recorder.stop}>Stop</Button>}
+      <span role="status">{recorder.mode === 'playing' ? 'Playing' : recorder.mode === 'recording' ? 'Recording' : ''}
+        {recorder.mode === 'idle' || recorder.count > 0 ? ` ${recorder.count} gesture${recorder.count === 1 ? '' : 's'}` : ''}
+      </span>
+    </div>}
+    </>
   )
 }

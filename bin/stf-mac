@@ -20,6 +20,10 @@ case "${1:-status}" in
       (umask 077
        printf 'STF_SECRET=%s\n' "$(openssl rand -hex 32)" > .env)
     fi
+    if [ ! -s res/build/entry/app.entry.js ]; then
+      npm ci --ignore-scripts --no-audit --no-fund
+      node build.mts compile webpack
+    fi
     if [ -f ios.local.json ]; then
       mkdir -p -m 700 tmp/mac-ios
       colima ssh-config -p stf > tmp/mac-ios/ssh.config

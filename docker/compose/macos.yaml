@@ -7,6 +7,8 @@ services:
       - ./docker/compose/local-auth.cjs:/app/local-auth.cjs:ro
 
   app:
+    volumes:
+      - ./res/build:/app/res/build:ro
     command: >-
       stf app
       --auth-url http://127.0.0.1:7100/auth/local/
