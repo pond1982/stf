@@ -1,0 +1,31 @@
+services:
+  adb:
+    profiles: [linux-usb]
+
+  provider:
+    command: >-
+      stf provider --name mac --adb-host host.docker.internal
+      --allow-remote --no-cleanup --public-ip 127.0.0.1
+      --min-port 7400 --max-port 7423
+      --storage-url http://proxy:7100/
+      --connect-sub tcp://triproxy-dev:7111
+      --connect-push tcp://triproxy-dev:7113
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+      triproxy-app:
+        condition: service_healthy
+      triproxy-dev:
+        condition: service_healthy
+      proxy:
+        condition: service_healthy
+      processor:
+        condition: service_started
+      groups-engine:
+        condition: service_started
+    ports: !override
+      - "127.0.0.1:7400-7423:7400-7423"
+
+  proxy:
+    ports: !override
+      - "127.0.0.1:7100:7100"

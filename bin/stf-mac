@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+export DOCKER_CONTEXT=colima-stf
+
+compose() {
+  docker-compose -f docker-compose.yaml -f docker/compose/macos.yaml "$@"
+}
+
+case "${1:-status}" in
+  start)
+    adb_bin="${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools/adb"
+    if [ ! -x "$adb_bin" ]; then adb_bin=adb; fi
+    "$adb_bin" start-server
+    colima start stf --activate=false --cpu 4 --memory 5 --disk 18 --mount "$PWD"
+    if [ ! -f .env ]; then
+      (umask 077
+       printf 'STF_SECRET=%s\n' "$(openssl rand -hex 32)" > .env)
+    fi
+    compose up -d --wait
+    ;;
+  stop)
+    compose stop
+    colima stop stf
+    ;;
+  status) compose ps -a ;;
+  logs) shift; compose logs --tail 80 "$@" ;;
+  *) echo "Usage: $0 {start|stop|status|logs [service ...]}" >&2; exit 2 ;;
+esac
